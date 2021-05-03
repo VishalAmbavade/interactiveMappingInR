@@ -1,0 +1,304 @@
+---
+title: "Power plants -leaflet"
+author: "Vishal"
+date: "27/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exploring Global Power Plants Dataset
+The Global Power Plant Database is a comprehensive, open source database of power plants around the world. It centralizes power plant data to make it easier to navigate, compare and draw insights for one’s own analysis. The database covers approximately 30,000 power plants from 164 countries and includes thermal plants (e.g. coal, gas, oil, nuclear, biomass, waste, geothermal) and renewables (e.g. hydro, wind, solar). Each power plant is geolocated and entries contain information on plant capacity, generation, ownership, and fuel type.
+
+It can be found here: https://datasets.wri.org/dataset/globalpowerplantdatabase
+
+The dataset has 24 different columns. But, we aren't going to use all of them. The most important columns we require are capaciy_mw, latitude, longitude, and primary_fuel. 
+Let's filter out the dataset, and categorize it based on the primary_fuels they use for their operation.
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+df <- read.csv("global_power_plant_database.csv")
+#head(df)
+df2 <- df %>%
+  select(country, country_long, name, capacity_mw, latitude, longitude, primary_fuel)
+
+head(df2)
+```
+
+## Plotting Power plants in India
+To plot the power plants in Inida, we will need to filter the dataframe. To achieve it we will use tidyverse package.
+
+```{r}
+library(leaflet)
+
+ind <- df2 %>%
+  filter(country == "IND" & primary_fuel == "Solar")
+
+map <- leaflet() %>%
+  addTiles() %>%
+  addMarkers(lng = ind$longitude, lat = ind$latitude)
+#map
+
+nuclear <- df2 %>%
+  group_by(primary_fuel) %>%
+  count()
+nuclear
+```
+
+That's a lot of markers and they're overlapping. What can we do? Let's try replacing the pins with circles.
+
+## Circle Markers
+Circle markers are notably different from pin markers:
+* We can control their size
+* They do not "stand-up" on the map
+* We can more easily change their color
+
+There are many ways to customize circle markers and the design of your leaflet map. To get started we will focus on the following arguments.
+
+```{r eval=FALSE, include=FALSE}
+addCircleMarkers(map, lng = NULL, lat = NULL, 
+                 radius = 10, color = "#03F", popup = NULL)
+```
+
+The first argument map takes a leaflet object, which we will pipe directly into addCircleMarkers(). lng and lat are the coordinates we are mapping. The other arguments can customize the appearance and information presented by each marker.
+
+```{r}
+#Let's clear the pins first
+map2 <- map %>%
+  clearMarkers()
+
+
+#Change the radius to 2 pixels and color to red
+map2 <- map2 %>%
+  addCircleMarkers(lng = ind$longitude, lat = ind$latitude, radius = 2, color = "red")
+
+map2
+```
+
+## Building a Better Pop-up
+With the paste0() function and a few html tags, we can customize our popups. paste0() converts its arguments to characters and combines them into a single string without separating the arguments.
+
+```{r eval=FALSE, include=FALSE}
+addCircleMarkers(popup = ~paste0(name,
+                                 "<br/>",
+                                 capacity_mw))
+```
+
+We can use the <br/> tag to create a line break to have each element appear on a separate line.
+
+To distinguish different data elements, we can make the name of each college italics by wrapping the name variable in <i></i>
+
+```{r eval=FALSE, include=FALSE}
+addCircleMarkers(popup = ~paste0("<i>",
+                                 name,
+                                 "</i>", 
+                                 "<br/>", 
+                                 capacity_mw))
+```
+
+Let's see how it looks on our map
+
+P.S: You may have to wait a little before the popup show as we have a lot of data points (nearly 30,000!).
+
+```{r}
+df2 %>%
+  leaflet() %>%
+  addProviderTiles("CartoDB") %>%
+  addCircleMarkers(lng = ~longitude, lat = ~latitude, popup = ~paste0(name, "<br/>", "Capacity: ", "<b>", capacity_mw, "</b>", "<br/>", " Fuel:", "<b>", primary_fuel, "</b>"), radius = 2, color = "#87349F")
+```
+
+## Swapping Popups for Labels
+Popups are great, but they require a little extra effort. That is when labels come to our the aid. Using the label argument in the addCircleMarkers() function we can get more information about one of our markers with a simple hover!
+
+Labels are especially helpful when mapping more than a few locations as they provide quick access to detail about what each marker represents.
+
+```{r}
+df2 %>%
+  leaflet() %>%
+  addProviderTiles("CartoDB") %>%
+  addCircleMarkers(lng = ~longitude, lat = ~latitude, label = ~name, radius = 2, color = "#87349F") 
+```
+
+Remember, you cannot use html tags for label like we did with popup.
+
+## Creating a Color Palette using colorFactor
+So far we have only used color to customize the style of our map. With colorFactor() we can create a color palette that maps colors the levels of a factor variable. 
+
+If you are interested in using a continuous variable to color a map see colorNumeric(). 
+
+```{r}
+pal <- colorFactor(palette = c("#1e6f5c", "#151515", "#b8b5ff", "#dddddd", "#f3bda1", "#04009a", "#ff0000", "#630000", "#d2e69c", "#ff005c", "#fff600", "#e40017", "#e27802", "#f6f5f5", "#ffc1b6"), 
+                   levels = c("Biomass", "Coal", "Cogeneration", "Gas", "Geothermal", "Hydro", "Nuclear", "Oil", "Other", "Petcoke", "Solar", "Storage", "Waste", "Wave and Tidal", "Wind"))
+
+map3 <- leaflet() %>%
+  addProviderTiles("CartoDB") %>%
+  addCircleMarkers(data = df2, lng = ~longitude, lat = ~latitude, label = ~name, radius = 2, color = ~pal(primary_fuel))
+
+map3
+```
+
+
+## Adding legends
+Adding information to our map using color is great, but it is only helpful if we remember what the colors represent. With addLegend() we can add a legend to remind us.
+
+There are several arguments we can use to custom the legend to our liking, including opacity, title, and position. To create a legend for our colorNumeric() example, we would do the following.
+
+```{r}
+map4 <- map3 %>%
+  addLegend(pal = pal, values = c("Biomass", "Coal", "Cogeneration", "Gas", "Geothermal", "Hydro", "Nuclear", "Oil", "Other", "Petcoke", "Solar", "Storage", "Waste", "Wave and Tidal", "Wind"), opacity = 0.5, position = "bottomleft")
+
+map4
+
+library(htmlwidgets)
+saveWidget(map4, file="final.html")
+```
+
+## Group Overlays
+The map we have right now, does show everything and looks kind of crowded. What if we could group power plants that use particulr primary fuel instead of showing all at once?
+Let's see how to do it!
+
+We can add each type of power plant to our map as a layer providing users with the ability to select which primary fuel are displayed. To do this we will make use of a new argument to the addCircleMarkers() function, called a group. 
+
+
+We'll integrate another feature into our map from the htmltools library. Wrapping our labels with the htmlEscape() function will sanitize characters that may be interpreted as HTML. This will prevent any of the power plant names from appearing with unintended formatting. 
+
+
+```{r}
+library(htmltools)
+
+map5 <- df2 %>%
+  leaflet() %>%
+  addProviderTiles("CartoDB") 
+
+biomass <- filter(df2, primary_fuel == "Biomass")
+coal <- filter(df2, primary_fuel == "Coal")
+cogeneration <- filter(df2, primary_fuel == "Cogeneration")
+gas <- filter(df2, primary_fuel == "Gas")
+geothermal <- filter(df2, primary_fuel == "Geothermal")
+hydro <- filter(df2, primary_fuel == "Hydro")
+nuclear <- filter(df2, primary_fuel == "Nuclear")
+oil <- filter(df2, primary_fuel == "Oil")
+other <- filter(df2, primary_fuel == "Other")
+petcoke <- filter(df2, primary_fuel == "Petcoke")
+solar <- filter(df2, primary_fuel == "Solar")
+storage <- filter(df2, primary_fuel == "Storage")
+waste <- filter(df2, primary_fuel == "Waste")
+tidal <- filter(df2, primary_fuel == "Wave and Tidal")
+wind <- filter(df2, primary_fuel == "Wind")
+
+
+
+map5 %>%
+  addCircleMarkers(data = biomass, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Biomass") %>%
+  addCircleMarkers(data = coal, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Coal") %>%
+  addCircleMarkers(data = cogeneration, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Cogeneration") %>%
+  addCircleMarkers(data = gas, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Gas") %>%
+  addCircleMarkers(data = geothermal, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Geothermal") %>%
+  addCircleMarkers(data = hydro, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Hydro") %>%
+  addCircleMarkers(data = nuclear, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Nuclear") %>%
+  addCircleMarkers(data = oil, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Oil") %>%
+  addCircleMarkers(data = other, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Other") %>%
+  addCircleMarkers(data = petcoke, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Petcoke") %>%
+  addCircleMarkers(data = solar, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Solar") %>%
+  addCircleMarkers(data = storage, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Storage") %>%
+  addCircleMarkers(data = waste, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Waste") %>%
+  addCircleMarkers(data = tidal, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Wave and Tidal") %>%
+  addCircleMarkers(data = wind, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Wind") %>%
+
+  addLayersControl(overlayGroups = c("Biomass", "Coal", "Cogeneration", "Gas", "Geothermal", "Hydro", "Nuclear", "Oil", "Other", "Petcoke", "Solar", "Storage", "Waste", "Wave and Tidal", "Wind"))  
+
+```
+
+
+## Chnage up the base
+
+Similar to how we added overlay groups, we can allow our users to toggle between different base maps using the baseGroups argument to the addLayersControl() function.
+
+First we will need to add multiple basemaps and specify the name of a group for each. 
+
+```{r}
+map6 <- df2 %>%
+  leaflet() %>%
+  addTiles(group = "OSM") %>%
+  addProviderTiles("CartoDB", group = "CartoDB") %>%
+  addProviderTiles("Esri", group = "Esri")
+
+biomass <- filter(df2, primary_fuel == "Biomass")
+coal <- filter(df2, primary_fuel == "Coal")
+cogeneration <- filter(df2, primary_fuel == "Cogeneration")
+gas <- filter(df2, primary_fuel == "Gas")
+geothermal <- filter(df2, primary_fuel == "Geothermal")
+hydro <- filter(df2, primary_fuel == "Hydro")
+nuclear <- filter(df2, primary_fuel == "Nuclear")
+oil <- filter(df2, primary_fuel == "Oil")
+other <- filter(df2, primary_fuel == "Other")
+petcoke <- filter(df2, primary_fuel == "Petcoke")
+solar <- filter(df2, primary_fuel == "Solar")
+storage <- filter(df2, primary_fuel == "Storage")
+waste <- filter(df2, primary_fuel == "Waste")
+tidal <- filter(df2, primary_fuel == "Wave and Tidal")
+wind <- filter(df2, primary_fuel == "Wind")
+
+
+
+map6 <- map6 %>%
+  addCircleMarkers(data = biomass, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Biomass") %>%
+  addCircleMarkers(data = coal, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Coal") %>%
+  addCircleMarkers(data = cogeneration, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Cogeneration") %>%
+  addCircleMarkers(data = gas, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Gas") %>%
+  addCircleMarkers(data = geothermal, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Geothermal") %>%
+  addCircleMarkers(data = hydro, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Hydro") %>%
+  addCircleMarkers(data = nuclear, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Nuclear") %>%
+  addCircleMarkers(data = oil, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Oil") %>%
+  addCircleMarkers(data = other, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Other") %>%
+  addCircleMarkers(data = petcoke, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Petcoke") %>%
+  addCircleMarkers(data = solar, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Solar") %>%
+  addCircleMarkers(data = storage, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Storage") %>%
+  addCircleMarkers(data = waste, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Waste") %>%
+  addCircleMarkers(data = tidal, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Wave and Tidal") %>%
+  addCircleMarkers(data = wind, radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), group = "Wind") %>%
+
+  addLayersControl(baseGroups = c("OSM", "CartoDB", "Esri"), overlayGroups = c("Biomass", "Coal", "Cogeneration", "Gas", "Geothermal", "Hydro", "Nuclear", "Oil", "Other", "Petcoke", "Solar", "Storage", "Waste", "Wave and Tidal", "Wind"))
+
+saveWidget(map6, file="final2.html")
+```
+
+## Adding Search Capability
+To search for markers, rather than locations, we can use the addSearchFeatures() function. addSearchFeatures() will add a search box that you can use to find markers in the group(s) passed to the targetGroups argument. 
+
+We'll need another package for adding this functionality. This package is called leaflet.extras.
+So let's first install it using the following command.
+
+```{r}
+install.packages("leaflet.extars")
+```
+
+```{r}
+library(leaflet.extras)
+
+nuclear_india <- filter(df2, primary_fuel == "Nuclear", country == "IND")
+nuclear_india %>%
+  leaflet() %>%
+  addProviderTiles("Esri") %>%
+  addCircleMarkers(radius = 2,
+                   label = ~htmlEscape(name),
+                   color = ~pal(primary_fuel),
+                   group = "Nuclear") %>%
+  addSearchFeatures(targetGroups = "Nuclear", options = searchFeaturesOptions(zoom = 10))
+```
+
+In the above example, I've filtered the data so that only nuclear power plants in India are searchable. You can change the filter according to your needs.
+
+## Creating clusters of Data
+Rather than using layers to improve the usability of our map, we could elect to cluster the power plants by clustering groups of nearby power plants together to reduce the number of points on the map. Zooming in will cause the clusters to break apart and the individual power plant to appear. This can be a useful tactic for mapping a large number of points in a user-friendly manner. 
+
+We can cluster all of our power plants by setting the clusterOptions argument of addCircleMarkers() as follows. 
+
+```{r}
+df2 %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(radius = 2, label = ~htmlEscape(name), color = ~pal(primary_fuel), clusterOptions = markerClusterOptions())
+```
